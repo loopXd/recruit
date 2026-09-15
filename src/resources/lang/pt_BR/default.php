@@ -660,6 +660,7 @@ return array_merge([
     'type_name' => 'Digite nome',
     'type_email' => 'Digite e-mail',
     'gender' => 'Gênero',
+    'city' => 'Cidade',
     'contact_number' => 'Número de contato',
     'contact' => 'Contato',
     'type_contact_number' => 'Digite número de contato',

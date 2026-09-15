@@ -132,35 +132,32 @@ class AllCandidateExport implements FromArray, WithHeadings, ShouldAutoSize
     }
 
     /**
-     * Pega o JSON de respostas (answer) da candidatura mais recente do
-     * candidato. Funciona tanto se a relação "answers" for hasOne quanto
-     * hasMany, pegando o registro mais recente em ambos os casos.
+     * Pega o JSON do formulário de candidatura (apply_form_setting) da
+     * candidatura mais recente do candidato. Esse campo, salvo na própria
+     * tabela job_applicants, é o formulário de candidatura completo
+     * (inclui o bloco de endereço/cidade), diferente da relação "answers"
+     * (tabela application_answers), que guarda apenas respostas avulsas de
+     * perguntas customizadas de entrevista — uma linha por pergunta — e
+     * por isso não é uma fonte confiável para dados de endereço.
      */
     protected function getLatestAnswerData($applicant): array
     {
         $jobApplicant = $applicant->jobApplicants->sortByDesc('created_at')->first();
 
-        if (!$jobApplicant || !$jobApplicant->relationLoaded('answers')) {
+        if (!$jobApplicant) {
             return [];
         }
 
-        $answersRelation = $jobApplicant->answers;
+        // Usamos o valor bruto (sem o cast 'object' do model) para poder
+        // decodificar como array associativo, que é o formato esperado
+        // pelos helpers recursivos abaixo (findValueByIdRecursive etc).
+        $raw = $jobApplicant->getRawOriginal('apply_form_setting');
 
-        $answerModel = $answersRelation instanceof Collection
-            ? $answersRelation->sortByDesc('id')->first()
-            : $answersRelation;
-
-        if (!$answerModel || !isset($answerModel->answer)) {
+        if (!$raw) {
             return [];
         }
 
-        $raw = $answerModel->answer;
-
-        if (is_string($raw)) {
-            return json_decode($raw, true) ?? [];
-        }
-
-        return is_array($raw) ? $raw : (array) $raw;
+        return json_decode($raw, true) ?? [];
     }
 
     /**

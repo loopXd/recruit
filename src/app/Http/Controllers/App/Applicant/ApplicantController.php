@@ -92,12 +92,14 @@ class ApplicantController extends Controller
             ->when(request()->get('city'), function ($query) {
                 $city = request()->get('city');
                 $query->where(function ($query) use ($city) {
-                    // Fonte 1: perfil do usuário vinculado ao candidato (quando existe conta/login)
+                    // Fonte 1: perfil do usuário vinculado ao candidato (quando existe conta/login).
+                    // "address" é uma coluna de texto simples (não JSON), então usamos LIKE direto.
                     $query->whereHas('profile', function ($q) use ($city) {
-                        $q->where('address->city', 'LIKE', "%{$city}%");
+                        $q->where('address', 'LIKE', "%{$city}%");
                     })
-                    // Fonte 2: respostas do formulário dinâmico de aplicação (fonte principal hoje)
-                    ->orWhereHas('jobApplicants.answers', function ($q) use ($city) {
+                    // Fonte 2 (principal): job_applicants.apply_form_setting, onde fica salvo o
+                    // formulário de candidatura completo (inclui o bloco de endereço/cidade).
+                    ->orWhereHas('jobApplicants', function ($q) use ($city) {
                         $q->where(function ($query) use ($city) {
                             foreach (self::CITY_FIELD_IDS as $fieldId) {
                                 $query->orWhereRaw($this->cityJsonSearchSql(), [$fieldId, "%{$city}%"]);
@@ -126,20 +128,33 @@ class ApplicantController extends Controller
     * do formulário. O caminho cobre a estrutura atual: sections > items >
     * fields > fields, sem depender do wildcard recursivo do MariaDB.
      *
-     * O JSON de `answer` é um array dinâmico de seções/itens/campos
-     * (form builder), então o caminho até a cidade não é fixo. O JSON_SEARCH
-     * encontra o id e o JSON_EXTRACT lê o value do mesmo objeto.
+     * O JSON de `apply_form_setting` (coluna de job_applicants) é um array
+     * dinâmico de seções/itens/campos (form builder) — é o mesmo JSON usado
+     * para renderizar o formulário de candidatura e é onde o endereço/cidade
+     * do candidato realmente fica salvo. O caminho até a cidade não é fixo,
+     * então o JSON_SEARCH encontra o id e o JSON_EXTRACT lê o value do mesmo
+     * objeto.
+     *
+     * Importante: isso é diferente da tabela `application_answers`, que
+     * guarda respostas avulsas de perguntas customizadas de entrevista
+     * (uma linha por pergunta), e não contém o formulário de candidatura
+     * inteiro — por isso não é uma fonte confiável para o endereço.
      */
     private function cityJsonSearchSql(): string
     {
+        // O COLLATE é necessário porque JSON_EXTRACT/JSON_UNQUOTE retornam o
+        // valor com collation binária (utf8mb4_bin), o que tornaria o LIKE
+        // abaixo sensível a maiúsculas/minúsculas (ex: "cariacica" não bateria
+        // com "Cariacica"). Forçamos utf8mb4_unicode_ci (mesma collation usada
+        // no resto do banco) para a busca funcionar como o usuário espera.
         return "
-            JSON_VALID(answer)
-            AND JSON_UNQUOTE(
+            JSON_VALID(apply_form_setting)
+            AND (JSON_UNQUOTE(
                 JSON_EXTRACT(
-                    answer,
+                    apply_form_setting,
                     REPLACE(
                         JSON_UNQUOTE(JSON_SEARCH(
-                            answer,
+                            apply_form_setting,
                             'one',
                             ?,
                             NULL,
@@ -149,7 +164,7 @@ class ApplicantController extends Controller
                         '.value'
                     )
                 )
-            ) LIKE ?
+            ) COLLATE utf8mb4_unicode_ci) LIKE ?
         ";
     }
 

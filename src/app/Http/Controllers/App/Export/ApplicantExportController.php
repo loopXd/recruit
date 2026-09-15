@@ -42,7 +42,6 @@ class ApplicantExportController extends Controller
                     'jobApplicants.jobPost',
                     'jobApplicants.currentStage',
                     'jobApplicants.status',
-                    'jobApplicants.answers',
                 ]
             )
             ->whereHas('jobApplicants', function ($query) {
@@ -121,7 +120,6 @@ class ApplicantExportController extends Controller
                     'jobApplicants.jobPost',
                     'jobApplicants.currentStage',
                     'jobApplicants.status',
-                    'jobApplicants.answers',
                 ]
             )
             ->whereHas('jobApplicants', function ($query) {
@@ -188,10 +186,15 @@ class ApplicantExportController extends Controller
     private function applyCityFilter($query, string $city): void
     {
         $query->where(function ($query) use ($city) {
+            // Fonte 1: perfil do usuário vinculado ao candidato. "address" é uma
+            // coluna de texto simples (não JSON), então usamos LIKE direto.
             $query->whereHas('profile', function ($profile) use ($city) {
-                $profile->where('address->city', 'LIKE', "%{$city}%");
-            })->orWhereHas('jobApplicants.answers', function ($answer) use ($city) {
-                $answer->where(function ($fields) use ($city) {
+                $profile->where('address', 'LIKE', "%{$city}%");
+            })
+            // Fonte 2 (principal): job_applicants.apply_form_setting, onde fica
+            // salvo o formulário de candidatura completo (inclui endereço/cidade).
+            ->orWhereHas('jobApplicants', function ($jobApplicant) use ($city) {
+                $jobApplicant->where(function ($fields) use ($city) {
                     foreach (self::CITY_FIELD_IDS as $fieldId) {
                         $fields->orWhereRaw($this->cityJsonSearchSql(), [$fieldId, "%{$city}%"]);
                     }
@@ -200,16 +203,24 @@ class ApplicantExportController extends Controller
         });
     }
 
+    /**
+     * Ver comentário equivalente em ApplicantController::cityJsonSearchSql().
+     * A busca precisa mirar `apply_form_setting` (job_applicants), não a
+     * tabela `application_answers`, que guarda apenas respostas avulsas de
+     * perguntas customizadas e não o formulário de candidatura inteiro.
+     */
     private function cityJsonSearchSql(): string
     {
+        // Ver comentário equivalente em ApplicantController::cityJsonSearchSql()
+        // sobre por que o COLLATE é necessário.
         return "
-            JSON_VALID(answer)
-            AND JSON_UNQUOTE(
+            JSON_VALID(apply_form_setting)
+            AND (JSON_UNQUOTE(
                 JSON_EXTRACT(
-                    answer,
+                    apply_form_setting,
                     REPLACE(
                         JSON_UNQUOTE(JSON_SEARCH(
-                            answer,
+                            apply_form_setting,
                             'one',
                             ?,
                             NULL,
@@ -219,7 +230,7 @@ class ApplicantExportController extends Controller
                         '.value'
                     )
                 )
-            ) LIKE ?
+            ) COLLATE utf8mb4_unicode_ci) LIKE ?
         ";
     }
 

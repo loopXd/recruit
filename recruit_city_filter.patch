@@ -1,0 +1,240 @@
+diff --git a/src/app/Export/AllCandidateExport.php b/src/app/Export/AllCandidateExport.php
+index b85ea25..dbdf103 100644
+--- a/src/app/Export/AllCandidateExport.php
++++ b/src/app/Export/AllCandidateExport.php
+@@ -132,35 +132,32 @@ class AllCandidateExport implements FromArray, WithHeadings, ShouldAutoSize
+     }
+ 
+     /**
+-     * Pega o JSON de respostas (answer) da candidatura mais recente do
+-     * candidato. Funciona tanto se a relação "answers" for hasOne quanto
+-     * hasMany, pegando o registro mais recente em ambos os casos.
++     * Pega o JSON do formulário de candidatura (apply_form_setting) da
++     * candidatura mais recente do candidato. Esse campo, salvo na própria
++     * tabela job_applicants, é o formulário de candidatura completo
++     * (inclui o bloco de endereço/cidade), diferente da relação "answers"
++     * (tabela application_answers), que guarda apenas respostas avulsas de
++     * perguntas customizadas de entrevista — uma linha por pergunta — e
++     * por isso não é uma fonte confiável para dados de endereço.
+      */
+     protected function getLatestAnswerData($applicant): array
+     {
+         $jobApplicant = $applicant->jobApplicants->sortByDesc('created_at')->first();
+ 
+-        if (!$jobApplicant || !$jobApplicant->relationLoaded('answers')) {
++        if (!$jobApplicant) {
+             return [];
+         }
+ 
+-        $answersRelation = $jobApplicant->answers;
++        // Usamos o valor bruto (sem o cast 'object' do model) para poder
++        // decodificar como array associativo, que é o formato esperado
++        // pelos helpers recursivos abaixo (findValueByIdRecursive etc).
++        $raw = $jobApplicant->getRawOriginal('apply_form_setting');
+ 
+-        $answerModel = $answersRelation instanceof Collection
+-            ? $answersRelation->sortByDesc('id')->first()
+-            : $answersRelation;
+-
+-        if (!$answerModel || !isset($answerModel->answer)) {
++        if (!$raw) {
+             return [];
+         }
+ 
+-        $raw = $answerModel->answer;
+-
+-        if (is_string($raw)) {
+-            return json_decode($raw, true) ?? [];
+-        }
+-
+-        return is_array($raw) ? $raw : (array) $raw;
++        return json_decode($raw, true) ?? [];
+     }
+ 
+     /**
+diff --git a/src/app/Http/Controllers/App/Applicant/ApplicantController.php b/src/app/Http/Controllers/App/Applicant/ApplicantController.php
+index cdcd73d..aff84fe 100644
+--- a/src/app/Http/Controllers/App/Applicant/ApplicantController.php
++++ b/src/app/Http/Controllers/App/Applicant/ApplicantController.php
+@@ -92,12 +92,14 @@ class ApplicantController extends Controller
+             ->when(request()->get('city'), function ($query) {
+                 $city = request()->get('city');
+                 $query->where(function ($query) use ($city) {
+-                    // Fonte 1: perfil do usuário vinculado ao candidato (quando existe conta/login)
++                    // Fonte 1: perfil do usuário vinculado ao candidato (quando existe conta/login).
++                    // "address" é uma coluna de texto simples (não JSON), então usamos LIKE direto.
+                     $query->whereHas('profile', function ($q) use ($city) {
+-                        $q->where('address->city', 'LIKE', "%{$city}%");
++                        $q->where('address', 'LIKE', "%{$city}%");
+                     })
+-                    // Fonte 2: respostas do formulário dinâmico de aplicação (fonte principal hoje)
+-                    ->orWhereHas('jobApplicants.answers', function ($q) use ($city) {
++                    // Fonte 2 (principal): job_applicants.apply_form_setting, onde fica salvo o
++                    // formulário de candidatura completo (inclui o bloco de endereço/cidade).
++                    ->orWhereHas('jobApplicants', function ($q) use ($city) {
+                         $q->where(function ($query) use ($city) {
+                             foreach (self::CITY_FIELD_IDS as $fieldId) {
+                                 $query->orWhereRaw($this->cityJsonSearchSql(), [$fieldId, "%{$city}%"]);
+@@ -126,20 +128,33 @@ class ApplicantController extends Controller
+     * do formulário. O caminho cobre a estrutura atual: sections > items >
+     * fields > fields, sem depender do wildcard recursivo do MariaDB.
+      *
+-     * O JSON de `answer` é um array dinâmico de seções/itens/campos
+-     * (form builder), então o caminho até a cidade não é fixo. O JSON_SEARCH
+-     * encontra o id e o JSON_EXTRACT lê o value do mesmo objeto.
++     * O JSON de `apply_form_setting` (coluna de job_applicants) é um array
++     * dinâmico de seções/itens/campos (form builder) — é o mesmo JSON usado
++     * para renderizar o formulário de candidatura e é onde o endereço/cidade
++     * do candidato realmente fica salvo. O caminho até a cidade não é fixo,
++     * então o JSON_SEARCH encontra o id e o JSON_EXTRACT lê o value do mesmo
++     * objeto.
++     *
++     * Importante: isso é diferente da tabela `application_answers`, que
++     * guarda respostas avulsas de perguntas customizadas de entrevista
++     * (uma linha por pergunta), e não contém o formulário de candidatura
++     * inteiro — por isso não é uma fonte confiável para o endereço.
+      */
+     private function cityJsonSearchSql(): string
+     {
++        // O COLLATE é necessário porque JSON_EXTRACT/JSON_UNQUOTE retornam o
++        // valor com collation binária (utf8mb4_bin), o que tornaria o LIKE
++        // abaixo sensível a maiúsculas/minúsculas (ex: "cariacica" não bateria
++        // com "Cariacica"). Forçamos utf8mb4_unicode_ci (mesma collation usada
++        // no resto do banco) para a busca funcionar como o usuário espera.
+         return "
+-            JSON_VALID(answer)
+-            AND JSON_UNQUOTE(
++            JSON_VALID(apply_form_setting)
++            AND (JSON_UNQUOTE(
+                 JSON_EXTRACT(
+-                    answer,
++                    apply_form_setting,
+                     REPLACE(
+                         JSON_UNQUOTE(JSON_SEARCH(
+-                            answer,
++                            apply_form_setting,
+                             'one',
+                             ?,
+                             NULL,
+@@ -149,7 +164,7 @@ class ApplicantController extends Controller
+                         '.value'
+                     )
+                 )
+-            ) LIKE ?
++            ) COLLATE utf8mb4_unicode_ci) LIKE ?
+         ";
+     }
+ 
+diff --git a/src/app/Http/Controllers/App/Export/ApplicantExportController.php b/src/app/Http/Controllers/App/Export/ApplicantExportController.php
+index f8c7357..c3a9bf8 100644
+--- a/src/app/Http/Controllers/App/Export/ApplicantExportController.php
++++ b/src/app/Http/Controllers/App/Export/ApplicantExportController.php
+@@ -42,7 +42,6 @@ class ApplicantExportController extends Controller
+                     'jobApplicants.jobPost',
+                     'jobApplicants.currentStage',
+                     'jobApplicants.status',
+-                    'jobApplicants.answers',
+                 ]
+             )
+             ->whereHas('jobApplicants', function ($query) {
+@@ -121,7 +120,6 @@ class ApplicantExportController extends Controller
+                     'jobApplicants.jobPost',
+                     'jobApplicants.currentStage',
+                     'jobApplicants.status',
+-                    'jobApplicants.answers',
+                 ]
+             )
+             ->whereHas('jobApplicants', function ($query) {
+@@ -188,10 +186,15 @@ class ApplicantExportController extends Controller
+     private function applyCityFilter($query, string $city): void
+     {
+         $query->where(function ($query) use ($city) {
++            // Fonte 1: perfil do usuário vinculado ao candidato. "address" é uma
++            // coluna de texto simples (não JSON), então usamos LIKE direto.
+             $query->whereHas('profile', function ($profile) use ($city) {
+-                $profile->where('address->city', 'LIKE', "%{$city}%");
+-            })->orWhereHas('jobApplicants.answers', function ($answer) use ($city) {
+-                $answer->where(function ($fields) use ($city) {
++                $profile->where('address', 'LIKE', "%{$city}%");
++            })
++            // Fonte 2 (principal): job_applicants.apply_form_setting, onde fica
++            // salvo o formulário de candidatura completo (inclui endereço/cidade).
++            ->orWhereHas('jobApplicants', function ($jobApplicant) use ($city) {
++                $jobApplicant->where(function ($fields) use ($city) {
+                     foreach (self::CITY_FIELD_IDS as $fieldId) {
+                         $fields->orWhereRaw($this->cityJsonSearchSql(), [$fieldId, "%{$city}%"]);
+                     }
+@@ -200,16 +203,24 @@ class ApplicantExportController extends Controller
+         });
+     }
+ 
++    /**
++     * Ver comentário equivalente em ApplicantController::cityJsonSearchSql().
++     * A busca precisa mirar `apply_form_setting` (job_applicants), não a
++     * tabela `application_answers`, que guarda apenas respostas avulsas de
++     * perguntas customizadas e não o formulário de candidatura inteiro.
++     */
+     private function cityJsonSearchSql(): string
+     {
++        // Ver comentário equivalente em ApplicantController::cityJsonSearchSql()
++        // sobre por que o COLLATE é necessário.
+         return "
+-            JSON_VALID(answer)
+-            AND JSON_UNQUOTE(
++            JSON_VALID(apply_form_setting)
++            AND (JSON_UNQUOTE(
+                 JSON_EXTRACT(
+-                    answer,
++                    apply_form_setting,
+                     REPLACE(
+                         JSON_UNQUOTE(JSON_SEARCH(
+-                            answer,
++                            apply_form_setting,
+                             'one',
+                             ?,
+                             NULL,
+@@ -219,7 +230,7 @@ class ApplicantExportController extends Controller
+                         '.value'
+                     )
+                 )
+-            ) LIKE ?
++            ) COLLATE utf8mb4_unicode_ci) LIKE ?
+         ";
+     }
+ 
+diff --git a/src/resources/lang/en/default.php b/src/resources/lang/en/default.php
+index 6a56a42..7d317c1 100644
+--- a/src/resources/lang/en/default.php
++++ b/src/resources/lang/en/default.php
+@@ -654,6 +654,7 @@ return array_merge([
+     'type_name' => 'Type name',
+     'type_email' => 'Type email',
+     'gender' => 'Gender',
++    'city' => 'City',
+     'contact_number' => 'Contact number',
+     'contact' => 'Contact',
+     'type_contact_number' => 'Type contact number',
+diff --git a/src/resources/lang/es/default.php b/src/resources/lang/es/default.php
+index f2c32a0..7571475 100644
+--- a/src/resources/lang/es/default.php
++++ b/src/resources/lang/es/default.php
+@@ -652,6 +652,7 @@ return array_merge([
+     'type_name' => 'Type name',
+     'type_email' => 'Type email',
+     'gender' => 'Gender',
++    'city' => 'Ciudad',
+     'contact_number' => 'Contact number',
+     'contact' => 'Contact',
+     'type_contact_number' => 'Type contact number',
+diff --git a/src/resources/lang/pt_BR/default.php b/src/resources/lang/pt_BR/default.php
+index ff45655..81b2f71 100644
+--- a/src/resources/lang/pt_BR/default.php
++++ b/src/resources/lang/pt_BR/default.php
+@@ -660,6 +660,7 @@ return array_merge([
+     'type_name' => 'Digite nome',
+     'type_email' => 'Digite e-mail',
+     'gender' => 'Gênero',
++    'city' => 'Cidade',
+     'contact_number' => 'Número de contato',
+     'contact' => 'Contato',
+     'type_contact_number' => 'Digite número de contato',

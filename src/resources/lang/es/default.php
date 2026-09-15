@@ -652,6 +652,7 @@ return array_merge([
     'type_name' => 'Type name',
     'type_email' => 'Type email',
     'gender' => 'Gender',
+    'city' => 'Ciudad',
     'contact_number' => 'Contact number',
     'contact' => 'Contact',
     'type_contact_number' => 'Type contact number',
