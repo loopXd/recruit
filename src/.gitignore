@@ -1,0 +1,61 @@
+# Laravel: Ignorar arquivos e pastas do framework
+/vendor/
+composer.lock
+
+# Node.js: Ignorar dependências e arquivos de build
+/node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+/public/hot
+/public/storage
+/storage/*.key
+
+# Ignorar arquivos de configuração local do Laravel
+.env
+.env.local
+.env.*.local
+
+# Ignorar cache do framework Laravel
+/storage/framework/cache/data
+/storage/framework/sessions
+/storage/framework/views
+/storage/logs
+
+# Arquivos de build do Vue.js (gerados pelo webpack ou outros bundlers)
+/public/js/
+/public/css/
+/public/fonts/
+/public/images/
+/public/mix-manifest.json
+/public/js/app.js
+/public/css/app.css
+
+# Pastas e arquivos de configuração do editor (VSCode, Sublime Text, etc)
+/.idea/
+/.vscode/
+
+# Arquivos do sistema operacional
+.DS_Store
+Thumbs.db
+
+# Arquivos temporários
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# Ignorar arquivos específicos de testes e coverage
+/tests
+/.phpunit.result.cache
+
+# Ignorar diretórios do sistema de build de ferramentas
+/.vscode/
+.idea/
+
+# Ignorar diretórios de cache do Laravel
+/.cache/
+
+# Ignorar o lockfile do NPM ou Yarn se não precisar versioná-los
+/package-lock.json
+/yarn.lock

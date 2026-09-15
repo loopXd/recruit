@@ -1,0 +1,48 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: recruitment-app
+    ports:
+      - "9010:80"
+    environment:
+      - APACHE_RUN_USER=www-data
+      - APACHE_RUN_GROUP=www-data
+      - COMPOSER_ALLOW_SUPERUSER=1
+      - DB_CONNECTION=${DB_CONNECTION}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_DATABASE=${DB_DATABASE}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+    depends_on:
+      - db
+    networks:
+      - npm_hml_01_network
+    volumes:
+      - app_data:/var/www/html
+
+  db:
+    image: yobasystems/alpine-mariadb:10.11.8
+    restart: always
+    container_name: recruitment-db
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    networks:
+      - npm_hml_01_network
+    volumes:
+      - db_data:/var/lib/mysql
+
+networks:
+  npm_hml_01_network:
+    external: true
+
+volumes:
+  app_data:
+  db_data:

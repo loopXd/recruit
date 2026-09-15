@@ -1,0 +1,61 @@
+                            <div v-if="pageBlocks[pageView].body" class="editor-body">
+                                <div class="editor-group-action mb-2">
+                                    <button
+                                            v-if="editBody"
+                                            class="btn"
+                                            type="button"
+                                            @click.prevent="addMoreRow">
+                                        <app-icon name="plus"/>
+                                    </button>
+                                    <button
+                                            class="btn"
+                                            type="button"
+                                            @click.prevent="editBodyTrigger">
+                                        <app-icon name="edit"/>
+                                    </button>
+                                    <button
+                                            class="btn"
+                                            type="button"
+                                            @click.prevent="editDone">
+                                        <app-icon name="check"/>
+                                    </button>
+                                </div>
+
+                                <template v-if="!editBody">
+                                    <div v-for="(section,index) in bodySection"
+                                         :key='`section-${index}`' class="mb-5">
+                                        <h5 :style="`font-size: ${headingsStyle.fontSize}; font-weight: ${headingsStyle.fontWeight}; letter-spacing: ${headingsStyle.letterSpacing}; color: ${headingsStyle.color};`">
+                                            {{ section.headings }}
+                                        </h5>
+                                        <div
+                                                :style="`font-size: ${descriptionStyle.fontSize}; font-weight: ${descriptionStyle.fontWeight}; letter-spacing: ${descriptionStyle.letterSpacing}; color: ${descriptionStyle.color};`"
+                                                v-html="section.description"></div>
+                                    </div>
+                                </template>
+                                <template v-else>
+                                    <div v-for="(section,index) in bodySection"
+                                         :key="`section-edit-${index}-${section.id}`"
+                                         class="mb-3">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <input
+                                                    v-model="section.headings"
+                                                    class="editor-body-input form-control"
+                                                    type="text"
+                                            />
+                                            <div class="width-30 height-30 text-white bg-success rounded d-inline-flex align-items-center justify-content-center cursor-pointer"
+                                                 @click.prevent="deleteSection(section)">
+                                                <app-icon class="size-14" name="trash-2"/>
+                                            </div>
+                                        </div>
+                                        <div class="editor">
+                                            <textarea
+                                                    :id="`summernote-${index}`"
+                                                    v-model="section.description"
+                                                    class="custom-scrollbar"
+                                                    rows="8">
+                                            {{ section.description }}
+                                            </textarea>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>

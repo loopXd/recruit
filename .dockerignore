@@ -1,0 +1,41 @@
+# Ignora diretórios e arquivos desnecessários
+node_modules
+npm-debug.log
+yarn.lock
+storage/*.key
+
+# Cache e build do Laravel
+bootstrap/cache/*.php
+
+# Diretórios de IDEs e editores
+.vscode
+.idea
+*.sublime-project
+*.sublime-workspace
+
+# Git e controle de versão
+.git
+.gitignore
+.gitattributes
+
+# Logs e arquivos temporários
+*.log
+*.swp
+*.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+Dockerfile.*
+docker-compose*.yml
+
+# Tests e development only
+phpunit.xml
+tests
+phpstan.neon
+.php-cs-fixer.php
+
+# Coverage
+coverage
+.clover
+.phpunit.result.cache
