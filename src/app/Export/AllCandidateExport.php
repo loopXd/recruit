@@ -153,11 +153,32 @@ class AllCandidateExport implements FromArray, WithHeadings, ShouldAutoSize
         // pelos helpers recursivos abaixo (findValueByIdRecursive etc).
         $raw = $jobApplicant->getRawOriginal('apply_form_setting');
 
+<<<<<<< ours
         if (!$raw) {
             return [];
         }
 
         return json_decode($raw, true) ?? [];
+=======
+        if (!$raw || !is_string($raw)) {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+
+        // Alguns registros antigos/importados podem ter o JSON salvo em
+        // "dobro" (uma string JSON dentro de outra string JSON). Nesse
+        // caso o primeiro decode devolve uma string (não array), então
+        // tentamos decodificar mais uma vez.
+        if (is_string($decoded)) {
+            $decoded = json_decode($decoded, true);
+        }
+
+        // Se, mesmo assim, não vier um array (JSON inválido, nulo, número,
+        // booleano etc.), devolvemos vazio em vez de deixar o tipo de
+        // retorno da função quebrar.
+        return is_array($decoded) ? $decoded : [];
+>>>>>>> theirs
     }
 
     /**
